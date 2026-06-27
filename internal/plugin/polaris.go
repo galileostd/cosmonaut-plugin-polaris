@@ -122,7 +122,7 @@ func (p *Plugin) HealthCheck(ctx context.Context, req *pluginv1.HealthCheckReque
 	}
 
 	icebergClient := client.NewIcebergClient(client.PolarisClientConfig{
-		Endpoint: req.Component.Endpoint,
+		Endpoint: req.Component.Config["endpoint"],
 		Token:    req.Component.Config["token"],
 		Catalog:  req.Component.Config["catalog"],
 		Prefix:   req.Component.Config["prefix"],
@@ -140,7 +140,7 @@ func (p *Plugin) HealthCheck(ctx context.Context, req *pluginv1.HealthCheckReque
 	}
 
 	managementClient := client.NewManagementClient(client.PolarisClientConfig{
-		Endpoint: req.Component.Endpoint,
+		Endpoint: req.Component.Config["endpoint"],
 		Token:    req.Component.Config["token"],
 		Catalog:  req.Component.Config["catalog"],
 		Prefix:   req.Component.Config["prefix"],
@@ -167,28 +167,28 @@ func (p *Plugin) Execute(ctx context.Context, req *pluginv1.ExecuteRequest) (*pl
 	}
 
 	icebergClient := client.NewIcebergClient(client.PolarisClientConfig{
-		Endpoint: req.Component.Endpoint,
+		Endpoint: req.Component.Config["endpoint"],
 		Token:    req.Component.Config["token"],
 		Catalog:  req.Component.Config["catalog"],
 		Prefix:   req.Component.Config["prefix"],
 	})
 
 	managementClient := client.NewManagementClient(client.PolarisClientConfig{
-		Endpoint: req.Component.Endpoint,
+		Endpoint: req.Component.Config["endpoint"],
 		Token:    req.Component.Config["token"],
 		Catalog:  req.Component.Config["catalog"],
 		Prefix:   req.Component.Config["prefix"],
 	})
 
 	policyClient := client.NewPolicyClient(client.PolarisClientConfig{
-		Endpoint: req.Component.Endpoint,
+		Endpoint: req.Component.Config["endpoint"],
 		Token:    req.Component.Config["token"],
 		Catalog:  req.Component.Config["catalog"],
 		Prefix:   req.Component.Config["prefix"],
 	})
 
 	genericClient := client.NewGenericClient(client.PolarisClientConfig{
-		Endpoint: req.Component.Endpoint,
+		Endpoint: req.Component.Config["endpoint"],
 		Token:    req.Component.Config["token"],
 		Catalog:  req.Component.Config["catalog"],
 		Prefix:   req.Component.Config["prefix"],
@@ -372,4 +372,27 @@ func unhealthy(msg string) *pluginv1.HealthCheckResponse {
 		State:   pluginv1.HealthState_HEALTH_STATE_UNHEALTHY,
 		Message: msg,
 	}
+}
+
+// GetLogs returns the Polaris service logs (the Polaris pod). Polaris has no
+// per-job pods, so JobId is ignored and we always return the Polaris pod's logs.
+func (p *Plugin) GetLogs(ctx context.Context, req *pluginv1.GetLogsRequest) (*pluginv1.GetLogsResponse, error) {
+	if req.Component == nil {
+		return nil, fmt.Errorf("component is required")
+	}
+
+	k8s, err := client.NewK8sClient()
+	if err != nil {
+		return nil, fmt.Errorf("creating kubernetes client: %w", err)
+	}
+
+	namespace := req.Component.Config["service_namespace"]
+	selector := req.Component.Config["pod_selector"]
+
+	lines, err := k8s.GetServiceLogs(ctx, namespace, selector, int64(req.TailLines))
+	if err != nil {
+		return nil, err
+	}
+
+	return &pluginv1.GetLogsResponse{Lines: lines}, nil
 }
